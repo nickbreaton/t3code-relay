@@ -11,8 +11,7 @@ import { fileURLToPath } from "node:url";
 const T3 = process.env.T3_BIN ?? join(homedir(), ".t3/bin/t3");
 const SCRATCH = real(join(process.env.T3CODE_HOME ?? join(homedir(), ".t3"), "scratch"));
 
-// How many of a project's newest threads to inspect for a worktree match.
-const SCAN_LIMIT = 20;
+// How many threads to look up at once when matching working folders.
 const SCAN_BATCH = 5;
 
 // Logs go to stderr; stdout carries the ACP protocol.
@@ -25,6 +24,7 @@ type T3Thread = {
   title: string;
   link?: string;
   parentThreadId: string | null;
+  settled: boolean;
   updatedAt: string;
 };
 
@@ -107,6 +107,7 @@ type Pick = { thread: T3Thread; projectDir: string; reason: string };
 // Pick the thread whose checkout contains the given paths (quoted files first,
 // then Zed's cwd). A path in a T3 worktree or scratch folder matches the thread
 // working there; a path in the main checkout matches threads without a worktree.
+// Folder matching only considers open (non-settled) threads.
 // No match is an error: we only send when the target is clear.
 async function pickThread(paths: string[]): Promise<Pick> {
   let lastError: unknown;
@@ -144,7 +145,8 @@ async function pickThread(paths: string[]): Promise<Pick> {
 
     if (owner) return { thread: owner, projectDir, reason: `owns scratch folder …-${suffix}` };
 
-    const scan = candidates.slice(0, SCAN_LIMIT);
+    // Only open (non-settled) threads are matched by working folder.
+    const scan = candidates.filter((t) => !t.settled);
 
     for (let i = 0; i < scan.length; i += SCAN_BATCH) {
       const batch = scan.slice(i, i + SCAN_BATCH);
