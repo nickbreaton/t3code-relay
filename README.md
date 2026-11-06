@@ -27,4 +27,5 @@ Env: `T3_BIN` overrides the `t3` path (default `~/.t3/bin/t3`); `T3_ACP_DEBUG=1`
 logs raw prompts to stderr (visible in Zed's ACP logs);
 `T3_ACP_DRY_RUN=1` replies with the chosen thread instead of sending.
 
-Successful sends get no reply in Zed; only errors are shown.
+Successful sends get no reply in Zed (only errors are shown), and the T3 Code app
+opens to the thread via a `t3code://threads/<environment>/<thread>` link.

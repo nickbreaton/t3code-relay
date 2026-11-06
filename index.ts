@@ -171,6 +171,18 @@ function scratchSuffix(dir: string) {
   return /-([0-9a-f]{8})$/.exec(folder)?.[1];
 }
 
+// Bring the T3 Code desktop app to the thread. Thread links look like
+// http://127.0.0.1:3773/<environmentId>/<threadId>; the app handles the same
+// path as t3code://threads/<environmentId>/<threadId>.
+async function openInT3(thread: T3Thread) {
+  if (!thread.link) return;
+
+  const url = `t3code://threads${new URL(thread.link).pathname}`;
+  const code = await Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" }).exited;
+
+  if (code !== 0) log(`couldn't open ${url} (exit ${code})`);
+}
+
 function filePath(uri: string) {
   return uri.startsWith("file://") ? fileURLToPath(uri.split("#")[0]!) : undefined;
 }
@@ -267,6 +279,8 @@ const app = acp
       } else {
         await t3(["thread", "send", thread.threadId, "-"], projectDir, message);
         log(`sent to ${thread.title} (${thread.threadId}): ${reason}`);
+
+        await openInT3(thread);
       }
     } catch (e) {
       // Only failures get a reply, so the message isn't silently lost.
