@@ -15,7 +15,7 @@ Zed `settings.json`:
 
 ```json
 "agent_servers": {
-  "T3 Code Relay": {
+  "T3 Code": {
     "type": "custom",
     "command": "/Users/nickbreaton/.bun/bin/bun",
     "args": ["/Users/nickbreaton/Developer/t3code-relay/index.ts"]
