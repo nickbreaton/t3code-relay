@@ -277,10 +277,13 @@ const app = acp
       if (process.env.T3_ACP_DRY_RUN) {
         await say(`Would send to **${thread.title}** (${reason})`);
       } else {
+        // Jump to the thread as soon as it's known; the message lands a moment later.
+        const opening = openInT3(thread);
+
         await t3(["thread", "send", thread.threadId, "-"], projectDir, message);
         log(`sent to ${thread.title} (${thread.threadId}): ${reason}`);
 
-        await openInT3(thread);
+        await opening;
       }
     } catch (e) {
       // Only failures get a reply, so the message isn't silently lost.
