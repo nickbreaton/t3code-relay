@@ -35,12 +35,15 @@ async function t3(args: string[], cwd: string, stdin?: string) {
     stdout: "pipe",
     stderr: "pipe",
   });
+
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+
   if (code !== 0) throw new Error(`t3 ${args.join(" ")} failed (${code}): ${err.trim() || out.trim()}`);
+
   return out;
 }
 
@@ -51,6 +54,7 @@ function real(p: string) {
     return p;
   }
 }
+
 const contains = (root: string, p: string) => p === root || p.startsWith(root.endsWith(sep) ? root : root + sep);
 const newestFirst = (a: T3Thread, b: T3Thread) => b.updatedAt.localeCompare(a.updatedAt);
 
@@ -60,6 +64,7 @@ function existingDir(p: string): string | undefined {
     try {
       return real(statSync(d).isDirectory() ? d : dirname(d));
     } catch {}
+
     if (dirname(d) === d) return undefined;
   }
 }
@@ -67,6 +72,7 @@ function existingDir(p: string): string | undefined {
 async function git(dir: string, args: string[]) {
   const proc = Bun.spawn(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
   const out = (await new Response(proc.stdout).text()).trim();
+
   return (await proc.exited) === 0 && out ? out : undefined;
 }
 
@@ -76,18 +82,23 @@ async function gitInfo(dir: string) {
     git(dir, ["rev-parse", "--show-toplevel"]),
     git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
   ]);
+
   const main = common?.endsWith("/.git") ? real(dirname(common)) : undefined;
+
   return { main, inLinkedWorktree: !!top && !!main && real(top) !== main };
 }
 
 // A thread's worktreePath rarely changes, so cache it briefly to keep sends fast.
 const worktreeCache = new Map<string, { at: number; path: string | null }>();
+
 async function worktreeOf(t: T3Thread): Promise<string | null> {
   const hit = worktreeCache.get(t.threadId);
+
   if (hit && Date.now() - hit.at < 60_000) return hit.path;
   const { thread } = JSON.parse(await t3(["thread", "show", t.threadId, "--messages", "0", "--json"], homedir()));
   const path = thread.worktreePath ? real(thread.worktreePath) : null;
   worktreeCache.set(t.threadId, { at: Date.now(), path });
+
   return path;
 }
 
@@ -104,12 +115,14 @@ async function pickThread(paths: string[]): Promise<Pick> {
 
   for (const raw of paths) {
     const dir = existingDir(raw);
+
     if (!dir || seen.has(dir)) continue;
     seen.add(dir);
 
     const { main, inLinkedWorktree } = await gitInfo(dir);
     let threads: T3Thread[] | undefined;
     let projectDir: string | undefined;
+
     for (const p of new Set([dir, main].filter((x): x is string => !!x))) {
       try {
         threads = JSON.parse(await t3(["thread", "list", "--project", p, "--json"], p));
@@ -119,6 +132,7 @@ async function pickThread(paths: string[]): Promise<Pick> {
         lastError = e;
       }
     }
+
     if (!threads || !projectDir) continue;
     foundProject = true;
 
@@ -127,15 +141,19 @@ async function pickThread(paths: string[]): Promise<Pick> {
     // Scratch folders are named "<date>-<slug>-<last 8 chars of the thread id>".
     const suffix = scratchSuffix(dir);
     const owner = suffix && candidates.find((t) => t.threadId.endsWith(suffix));
+
     if (owner) return { thread: owner, projectDir, reason: `owns scratch folder …-${suffix}` };
 
     const scan = candidates.slice(0, SCAN_LIMIT);
+
     for (let i = 0; i < scan.length; i += SCAN_BATCH) {
       const batch = scan.slice(i, i + SCAN_BATCH);
       const wts = await Promise.all(batch.map((t) => worktreeOf(t).catch(() => undefined)));
       const idx = wts.findIndex((wt) => (wt ? contains(wt, dir) : wt === null && !inLinkedWorktree));
+
       if (idx >= 0) {
         const wt = wts[idx];
+
         return { thread: batch[idx]!, projectDir, reason: wt ? `works in ${wt}` : "works in the main checkout" };
       }
     }
@@ -149,6 +167,7 @@ async function pickThread(paths: string[]): Promise<Pick> {
 function scratchSuffix(dir: string) {
   if (!contains(SCRATCH, dir) || dir === SCRATCH) return undefined;
   const folder = dir.slice(SCRATCH.length + 1).split(sep)[0]!;
+
   return /-([0-9a-f]{8})$/.exec(folder)?.[1];
 }
 
@@ -158,16 +177,19 @@ function filePath(uri: string) {
 
 function displayPath(uri: string, cwd: string) {
   let path = uri;
+
   if (uri.startsWith("file://")) {
     const [base, frag] = uri.split("#");
     path = fileURLToPath(base!) + (frag ? `#${frag}` : "");
   }
+
   return path.startsWith(cwd + "/") ? path.slice(cwd.length + 1) : path;
 }
 
 // Flatten the prompt's content blocks into one markdown message.
 function toMarkdown(blocks: acp.ContentBlock[], cwd: string) {
   const parts: string[] = [];
+
   for (const b of blocks) {
     switch (b.type) {
       case "text":
@@ -179,6 +201,7 @@ function toMarkdown(blocks: acp.ContentBlock[], cwd: string) {
         } else {
           parts.push(`\`${displayPath(b.resource.uri, cwd)}\` (binary)`);
         }
+
         break;
       case "resource_link":
         parts.push(`\`${displayPath(b.uri, cwd)}\``);
@@ -187,6 +210,7 @@ function toMarkdown(blocks: acp.ContentBlock[], cwd: string) {
         parts.push(`[${b.type} omitted]`);
     }
   }
+
   return parts.join("\n\n").trim();
 }
 
@@ -204,11 +228,14 @@ const app = acp
   .onRequest(acp.methods.agent.session.new, ({ params }) => {
     const sessionId = crypto.randomUUID();
     sessions.set(sessionId, { cwd: params.cwd });
+
     return { sessionId };
   })
   .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
     const session = sessions.get(params.sessionId);
+
     if (!session) throw acp.RequestError.invalidParams(undefined, `Unknown session ${params.sessionId}`);
+
     if (process.env.T3_ACP_DEBUG) log("prompt", JSON.stringify(params.prompt));
 
     const say = (text: string) =>
@@ -218,19 +245,23 @@ const app = acp
       });
 
     const message = toMarkdown(params.prompt, session.cwd);
+
     if (!message) {
       await say("Nothing to send.");
+
       return { stopReason: "end_turn" };
     }
 
     const quoted = params.prompt.flatMap((b) => {
       const uri = b.type === "resource" ? b.resource.uri : b.type === "resource_link" ? b.uri : undefined;
       const path = uri && filePath(uri);
+
       return path ? [path] : [];
     });
 
     try {
       const { thread, projectDir, reason } = await pickThread([...quoted, session.cwd]);
+
       if (process.env.T3_ACP_DRY_RUN) {
         await say(`Would send to **${thread.title}** (${reason})`);
       } else {
@@ -242,6 +273,7 @@ const app = acp
       log(e);
       await say(`Couldn't forward to T3: ${e instanceof Error ? e.message : String(e)}`);
     }
+
     return { stopReason: "end_turn" };
   })
   .onNotification(acp.methods.agent.session.cancel, () => {});
@@ -249,4 +281,5 @@ const app = acp
 const stdout = new WritableStream<Uint8Array>({
   write: (chunk) => new Promise((resolve) => process.stdout.write(chunk, () => resolve())),
 });
+
 app.connect(acp.ndJsonStream(stdout, Bun.stdin.stream()));
