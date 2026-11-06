@@ -1,0 +1,15 @@
+{
+  "name": "t3-acp-inbox",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "^1.4.4"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^2.4.0"
+  }
+}
