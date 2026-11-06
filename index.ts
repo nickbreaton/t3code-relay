@@ -231,7 +231,10 @@ const app = acp
   .onRequest(acp.methods.agent.initialize, () => ({
     protocolVersion: acp.PROTOCOL_VERSION,
     agentCapabilities: {
-      loadSession: false,
+      // Load and resume are accepted so Zed can reopen old chats after a restart.
+      // The relay keeps no history, so nothing is replayed and they reopen empty.
+      loadSession: true,
+      sessionCapabilities: { resume: {} },
       promptCapabilities: { embeddedContext: true, image: false, audio: false },
     },
     agentInfo: { name: "t3code-relay", title: "T3 Code Relay", version: "0.1.0" },
@@ -243,10 +246,20 @@ const app = acp
 
     return { sessionId };
   })
-  .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
-    const session = sessions.get(params.sessionId);
+  .onRequest(acp.methods.agent.session.load, ({ params }) => {
+    sessions.set(params.sessionId, { cwd: params.cwd });
 
-    if (!session) throw acp.RequestError.invalidParams(undefined, `Unknown session ${params.sessionId}`);
+    return {};
+  })
+  .onRequest(acp.methods.agent.session.resume, ({ params }) => {
+    sessions.set(params.sessionId, { cwd: params.cwd });
+
+    return {};
+  })
+  .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
+    // A chat Zed reopened without loading it first still works; Zed starts the
+    // relay in the project folder, so that stands in for the chat's cwd.
+    const session = sessions.get(params.sessionId) ?? { cwd: process.cwd() };
 
     if (process.env.T3_ACP_DEBUG) log("prompt", JSON.stringify(params.prompt));
 
