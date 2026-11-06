@@ -1,5 +1,5 @@
 {
-  "name": "t3-acp-inbox",
+  "name": "t3code-relay",
   "module": "index.ts",
   "type": "module",
   "private": true,

@@ -16,7 +16,7 @@ const SCAN_LIMIT = 20;
 const SCAN_BATCH = 5;
 
 // Logs go to stderr; stdout carries the ACP protocol.
-const log = (...args: unknown[]) => console.error("[t3-acp-inbox]", ...args);
+const log = (...args: unknown[]) => console.error("[t3code-relay]", ...args);
 
 const sessions = new Map<string, { cwd: string }>();
 
@@ -191,14 +191,14 @@ function toMarkdown(blocks: acp.ContentBlock[], cwd: string) {
 }
 
 const app = acp
-  .agent({ name: "t3-acp-inbox" })
+  .agent({ name: "t3code-relay" })
   .onRequest(acp.methods.agent.initialize, () => ({
     protocolVersion: acp.PROTOCOL_VERSION,
     agentCapabilities: {
       loadSession: false,
       promptCapabilities: { embeddedContext: true, image: false, audio: false },
     },
-    agentInfo: { name: "t3-acp-inbox", title: "T3 Inbox", version: "0.1.0" },
+    agentInfo: { name: "t3code-relay", title: "T3 Code Relay", version: "0.1.0" },
     authMethods: [],
   }))
   .onRequest(acp.methods.agent.session.new, ({ params }) => {

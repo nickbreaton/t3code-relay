@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "t3-acp-inbox",
+      "name": "t3code-relay",
       "dependencies": {
         "@agentclientprotocol/sdk": "^2.4.0",
       },

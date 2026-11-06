@@ -1,4 +1,4 @@
-# t3-acp-inbox
+# t3code-relay
 
 A fake ACP agent for Zed. Anything you send to it (including "Add to agent" quotes)
 is forwarded with `t3 thread send` to the T3 Code thread most likely working on
@@ -15,10 +15,10 @@ Zed `settings.json`:
 
 ```json
 "agent_servers": {
-  "T3 Inbox": {
+  "T3 Code Relay": {
     "type": "custom",
     "command": "/Users/nickbreaton/.bun/bin/bun",
-    "args": ["/Users/nickbreaton/Developer/t3-acp-inbox/index.ts"]
+    "args": ["/Users/nickbreaton/Developer/t3code-relay/index.ts"]
   }
 }
 ```
