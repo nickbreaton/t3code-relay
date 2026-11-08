@@ -1,16 +1,18 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // A fake ACP agent: every prompt Zed sends is forwarded to the T3 Code thread
 // most likely working on the files involved, via the `t3` CLI.
 
 import * as acp from "@agentclientprotocol/sdk";
+import { spawn } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { delimiter, dirname, join, sep } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const { values: flags } = parseArgs({
-  args: Bun.argv.slice(2),
+  args: process.argv.slice(2),
   options: {
     "t3-bin": { type: "string" },
     debug: { type: "boolean", default: false },
@@ -18,7 +20,10 @@ const { values: flags } = parseArgs({
   },
 });
 
-const T3 = flags["t3-bin"] ?? join(homedir(), ".t3/bin/t3");
+// T3's installer doesn't put its CLI on PATH, so its install folder is searched last.
+process.env.PATH = [process.env.PATH, join(homedir(), ".t3/bin")].filter(Boolean).join(delimiter);
+
+const T3 = flags["t3-bin"] ?? "t3";
 const SCRATCH = real(join(process.env.T3CODE_HOME ?? join(homedir(), ".t3"), "scratch"));
 
 // How many threads to look up at once when matching working folders.
@@ -38,19 +43,28 @@ type T3Thread = {
   updatedAt: string;
 };
 
-async function t3(args: string[], cwd: string, stdin?: string) {
-  const proc = Bun.spawn([T3, ...args], {
-    cwd,
-    stdin: stdin === undefined ? "ignore" : new Blob([stdin]),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+// Run a command to completion and capture its output.
+function run(command: string, args: string[], options: { cwd?: string; stdin?: string } = {}) {
+  return new Promise<{ code: number | null; out: string; err: string }>((resolve, reject) => {
+    const child = spawn(command, args, { cwd: options.cwd });
 
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+    let out = "";
+    let err = "";
+
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (out += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (err += chunk));
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, out, err }));
+
+    // A child that exits without reading stdin surfaces through its exit code,
+    // so the resulting EPIPE must not take the relay down.
+    child.stdin.on("error", (e) => log("stdin write failed:", e));
+    child.stdin.end(options.stdin);
+  });
+}
+
+async function t3(args: string[], cwd: string, stdin?: string) {
+  const { code, out, err } = await run(T3, args, { cwd, stdin });
 
   if (code !== 0) throw new Error(`t3 ${args.join(" ")} failed (${code}): ${err.trim() || out.trim()}`);
 
@@ -80,10 +94,9 @@ function existingDir(p: string): string | undefined {
 }
 
 async function git(dir: string, args: string[]) {
-  const proc = Bun.spawn(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
-  const out = (await new Response(proc.stdout).text()).trim();
+  const { code, out } = await run("git", ["-C", dir, ...args]);
 
-  return (await proc.exited) === 0 && out ? out : undefined;
+  return code === 0 && out.trim() ? out.trim() : undefined;
 }
 
 // For a path in a git checkout: the main checkout, and whether the path is in a linked worktree.
@@ -190,9 +203,15 @@ async function openInT3(thread: T3Thread) {
   if (!thread.link) return;
 
   const url = `t3code://threads${new URL(thread.link).pathname}`;
-  const code = await Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" }).exited;
 
-  if (code !== 0) log(`couldn't open ${url} (exit ${code})`);
+  // Opening is best effort and runs alongside the send, so it must never reject.
+  try {
+    const { code } = await run("open", [url]);
+
+    if (code !== 0) log(`couldn't open ${url} (exit ${code})`);
+  } catch (e) {
+    log(`couldn't open ${url}`, e);
+  }
 }
 
 function filePath(uri: string) {
@@ -324,4 +343,7 @@ const stdout = new WritableStream<Uint8Array>({
   write: (chunk) => new Promise((resolve) => process.stdout.write(chunk, () => resolve())),
 });
 
-app.connect(acp.ndJsonStream(stdout, Bun.stdin.stream()));
+// SAFETY: process.stdin has no encoding set, so it yields Buffers, which are Uint8Arrays.
+const stdin = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+
+app.connect(acp.ndJsonStream(stdout, stdin));
