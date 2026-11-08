@@ -7,8 +7,18 @@ import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
-const T3 = process.env.T3_BIN ?? join(homedir(), ".t3/bin/t3");
+const { values: flags } = parseArgs({
+  args: Bun.argv.slice(2),
+  options: {
+    "t3-bin": { type: "string" },
+    debug: { type: "boolean", default: false },
+    "dry-run": { type: "boolean", default: false },
+  },
+});
+
+const T3 = flags["t3-bin"] ?? join(homedir(), ".t3/bin/t3");
 const SCRATCH = real(join(process.env.T3CODE_HOME ?? join(homedir(), ".t3"), "scratch"));
 
 // How many threads to look up at once when matching working folders.
@@ -263,7 +273,7 @@ const app = acp
     // relay in the project folder, so that stands in for the chat's cwd.
     const session = sessions.get(params.sessionId) ?? { cwd: process.cwd() };
 
-    if (process.env.T3_ACP_DEBUG) log("prompt", JSON.stringify(params.prompt));
+    if (flags.debug) log("prompt", JSON.stringify(params.prompt));
 
     const say = (text: string) =>
       client.notify(acp.methods.client.session.update, {
@@ -289,7 +299,7 @@ const app = acp
     try {
       const { thread, projectDir, reason } = await pickThread([...quoted, session.cwd]);
 
-      if (process.env.T3_ACP_DRY_RUN) {
+      if (flags["dry-run"]) {
         await say(`Would send to **${thread.title}** (${reason})`);
       } else {
         // Jump to the thread as soon as it's known; the message lands a moment later.
