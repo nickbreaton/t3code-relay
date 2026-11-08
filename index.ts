@@ -17,6 +17,7 @@ const { values: flags } = parseArgs({
     "t3-bin": { type: "string" },
     debug: { type: "boolean", default: false },
     "dry-run": { type: "boolean", default: false },
+    "no-focus": { type: "boolean", default: false },
   },
 });
 
@@ -200,7 +201,7 @@ function scratchSuffix(dir: string) {
 // http://127.0.0.1:3773/<environmentId>/<threadId>; the app handles the same
 // path as t3code://threads/<environmentId>/<threadId>.
 async function openInT3(thread: T3Thread) {
-  if (!thread.link) return;
+  if (flags["no-focus"] || !thread.link) return;
 
   const url = `t3code://threads${new URL(thread.link).pathname}`;
 

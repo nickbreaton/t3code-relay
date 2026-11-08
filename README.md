@@ -21,4 +21,7 @@ Clone this repo, install dependencies, then run it with Node. Here's an example 
 
 ### Options
 
-Pass `--t3-bin <path>` to use a specific `t3` CLI.
+| Option | Description |
+| --- | --- |
+| `--t3-bin <path>` | Use a specific `t3` CLI. |
+| `--no-focus` | Don't bring T3 Code into focus on the target thread when sending a message. |
