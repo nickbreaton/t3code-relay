@@ -30,10 +30,15 @@ const SCRATCH = real(join(process.env.T3CODE_HOME ?? join(homedir(), ".t3"), "sc
 // How many threads to look up at once when matching working folders.
 const SCAN_BATCH = 5;
 
+// How many threads to offer when several match; each one becomes a button in Zed.
+const MAX_CHOICES = 4;
+const DONT_SEND = "dont-send";
+
 // Logs go to stderr; stdout carries the ACP protocol.
 const log = (...args: unknown[]) => console.error("[t3code-relay]", ...args);
 
-const sessions = new Map<string, { cwd: string }>();
+// threadId is the thread the user chose for this chat, when they had to choose.
+const sessions = new Map<string, { cwd: string; threadId?: string }>();
 
 type T3Thread = {
   threadId: string;
@@ -126,14 +131,15 @@ async function worktreeOf(t: T3Thread): Promise<string | null> {
   return path;
 }
 
-type Pick = { thread: T3Thread; projectDir: string; reason: string };
+type Match = { thread: T3Thread; reason: string };
 
-// Pick the thread whose checkout contains the given paths (quoted files first,
-// then Zed's cwd). A path in a T3 worktree or scratch folder matches the thread
-// working there; a path in the main checkout matches threads without a worktree.
+// Find the threads whose checkout contains the given paths (quoted files first,
+// then Zed's cwd), newest first. The first path with any match decides.
+// A path in a T3 worktree or scratch folder matches the thread working there;
+// a path in the main checkout matches threads without a worktree.
 // Folder matching only considers open (non-settled) threads.
 // No match is an error: we only send when the target is clear.
-async function pickThread(paths: string[]): Promise<Pick> {
+async function findThreads(paths: string[]): Promise<{ matches: Match[]; projectDir: string }> {
   let lastError: unknown;
   let foundProject = false;
   const seen = new Set<string>();
@@ -167,22 +173,26 @@ async function pickThread(paths: string[]): Promise<Pick> {
     const suffix = scratchSuffix(dir);
     const owner = suffix && candidates.find((t) => t.threadId.endsWith(suffix));
 
-    if (owner) return { thread: owner, projectDir, reason: `owns scratch folder …-${suffix}` };
+    if (owner) return { matches: [{ thread: owner, reason: `owns scratch folder …-${suffix}` }], projectDir };
 
     // Only open (non-settled) threads are matched by working folder.
     const scan = candidates.filter((t) => !t.settled);
+    const matches: Match[] = [];
 
     for (let i = 0; i < scan.length; i += SCAN_BATCH) {
       const batch = scan.slice(i, i + SCAN_BATCH);
       const wts = await Promise.all(batch.map((t) => worktreeOf(t).catch(() => undefined)));
-      const idx = wts.findIndex((wt) => (wt ? contains(wt, dir) : wt === null && !inLinkedWorktree));
 
-      if (idx >= 0) {
+      batch.forEach((thread, idx) => {
         const wt = wts[idx];
 
-        return { thread: batch[idx]!, projectDir, reason: wt ? `works in ${wt}` : "works in the main checkout" };
-      }
+        if (wt ? contains(wt, dir) : wt === null && !inLinkedWorktree) {
+          matches.push({ thread, reason: wt ? `works in ${wt}` : "works in the main checkout" });
+        }
+      });
     }
+
+    if (matches.length > 0) return { matches, projectDir };
   }
 
   // No project at all (or T3 isn't running): surface the t3 error itself.
@@ -292,6 +302,7 @@ const app = acp
     // A chat Zed reopened without loading it first still works; Zed starts the
     // relay in the project folder, so that stands in for the chat's cwd.
     const session = sessions.get(params.sessionId) ?? { cwd: process.cwd() };
+    sessions.set(params.sessionId, session);
 
     if (flags.debug) log("prompt", JSON.stringify(params.prompt));
 
@@ -300,6 +311,44 @@ const app = acp
         sessionId: params.sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
       });
+
+    // ACP has no general "pick one" request that clients reliably support, so
+    // the choice is presented as a permission prompt on a placeholder tool call.
+    const askWhichThread = async (matches: Match[]) => {
+      const toolCallId = crypto.randomUUID();
+
+      // The SDK's method-keyed overload infers this response as unknown, so name the types.
+      const { outcome } = await client.request<acp.RequestPermissionResponse, acp.RequestPermissionRequest>(acp.methods.client.session.requestPermission, {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId,
+          title: "Several T3 threads are open in this checkout. Which one should get this?",
+          kind: "other",
+          status: "pending",
+        },
+        options: [
+          ...matches
+            .slice(0, MAX_CHOICES)
+            .map((m) => ({ optionId: m.thread.threadId, name: m.thread.title, kind: "allow_once" as const })),
+          { optionId: DONT_SEND, name: "Don't send", kind: "reject_once" },
+        ],
+      });
+
+      const chosen = outcome.outcome === "selected" ? matches.find((m) => m.thread.threadId === outcome.optionId) : undefined;
+
+      // The client leaves the placeholder running until it's told otherwise.
+      await client.notify(acp.methods.client.session.update, {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          status: chosen ? "completed" : "failed",
+          title: chosen ? `Sending to ${chosen.thread.title}` : "Not sent",
+        },
+      });
+
+      return chosen;
+    };
 
     const message = toMarkdown(params.prompt, session.cwd);
 
@@ -317,7 +366,19 @@ const app = acp
     });
 
     try {
-      const { thread, projectDir, reason } = await pickThread([...quoted, session.cwd]);
+      const { matches, projectDir } = await findThreads([...quoted, session.cwd]);
+
+      // A choice made earlier in this chat holds for as long as that thread still matches.
+      const match =
+        matches.length === 1
+          ? matches[0]
+          : (matches.find((m) => m.thread.threadId === session.threadId) ?? (await askWhichThread(matches)));
+
+      if (!match) return { stopReason: "cancelled" };
+
+      if (matches.length > 1) session.threadId = match.thread.threadId;
+
+      const { thread, reason } = match;
 
       if (flags["dry-run"]) {
         await say(`Would send to **${thread.title}** (${reason})`);
