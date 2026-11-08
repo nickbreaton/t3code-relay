@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "lint": "oxlint",
+    "test": "node --test --experimental-test-module-mocks index.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
