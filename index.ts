@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A fake ACP agent: every prompt Zed sends is forwarded to the T3 Code thread
+// A fake ACP agent: every prompt the ACP client sends is forwarded to the T3 Code thread
 // most likely working on the files involved, via the `t3` CLI.
 
 import * as acp from "@agentclientprotocol/sdk";
@@ -27,10 +27,10 @@ process.env.PATH = [process.env.PATH, join(homedir(), ".t3/bin")].filter(Boolean
 const T3 = flags["t3-bin"] ?? "t3";
 const SCRATCH = real(join(process.env.T3CODE_HOME ?? join(homedir(), ".t3"), "scratch"));
 
-// How many threads to look up at once when matching working folders.
+// How many threads to look up at once when matching workspaces.
 const SCAN_BATCH = 5;
 
-// How many threads to offer when several match; each one becomes a button in Zed.
+// How many threads to offer when several match; each one becomes a button in the ACP client.
 const MAX_CHOICES = 4;
 const DONT_SEND = "dont-send";
 
@@ -47,6 +47,8 @@ type T3Thread = {
   parentThreadId: string | null;
   settled: boolean;
   updatedAt: string;
+  providerInstanceId?: string | null;
+  model?: string | null;
 };
 
 // Run a command to completion and capture its output.
@@ -133,15 +135,16 @@ async function worktreeOf(t: T3Thread): Promise<string | null> {
 
 type Match = { thread: T3Thread; reason: string };
 
-// Find the threads whose checkout contains the given paths (quoted files first,
-// then Zed's cwd), newest first. The first path with any match decides.
+// Find the threads whose workspace contains the given paths (quoted files first,
+// then the ACP client's cwd), newest first. The first path with any match decides.
 // A path in a T3 worktree or scratch folder matches the thread working there;
 // a path in the main checkout matches threads without a worktree.
-// Folder matching only considers open (non-settled) threads.
-// No match is an error: we only send when the target is clear.
-async function findThreads(paths: string[]): Promise<{ matches: Match[]; projectDir: string }> {
+// Workspace matching only considers open (non-settled) threads.
+// No match returns an empty list, so a new thread can start in the project
+// folder. The t3 CLI can't start one in an existing worktree, so that's an error.
+async function findThreads(paths: string[]): Promise<{ matches: Match[]; projectDir: string; latest?: T3Thread }> {
   let lastError: unknown;
-  let foundProject = false;
+  let firstProject: { dir: string; projectDir: string; inLinkedWorktree: boolean; latest?: T3Thread } | undefined;
   const seen = new Set<string>();
 
   for (const raw of paths) {
@@ -165,9 +168,9 @@ async function findThreads(paths: string[]): Promise<{ matches: Match[]; project
     }
 
     if (!threads || !projectDir) continue;
-    foundProject = true;
-
     const candidates = threads.filter((t) => !t.parentThreadId).sort(newestFirst);
+
+    firstProject ??= { dir, projectDir, inLinkedWorktree, latest: candidates[0] };
 
     // Scratch folders are named "<date>-<slug>-<last 8 chars of the thread id>".
     const suffix = scratchSuffix(dir);
@@ -175,7 +178,7 @@ async function findThreads(paths: string[]): Promise<{ matches: Match[]; project
 
     if (owner) return { matches: [{ thread: owner, reason: `owns scratch folder …-${suffix}` }], projectDir };
 
-    // Only open (non-settled) threads are matched by working folder.
+    // Only open (non-settled) threads are matched by workspace.
     const scan = candidates.filter((t) => !t.settled);
     const matches: Match[] = [];
 
@@ -196,7 +199,14 @@ async function findThreads(paths: string[]): Promise<{ matches: Match[]; project
   }
 
   // No project at all (or T3 isn't running): surface the t3 error itself.
-  if (!foundProject && lastError) throw lastError;
+  if (!firstProject && lastError) throw lastError;
+
+  if (firstProject?.inLinkedWorktree) {
+    throw new Error(`No open T3 thread is working in ${firstProject.dir}, and t3 can't start one in an existing worktree.`);
+  }
+
+  if (firstProject) return { matches: [], projectDir: firstProject.projectDir, latest: firstProject.latest };
+
   throw new Error(`No T3 thread is working in ${[...seen].join(" or ") || "these paths"}.`);
 }
 
@@ -222,6 +232,33 @@ async function openInT3(thread: T3Thread) {
     if (code !== 0) log(`couldn't open ${url} (exit ${code})`);
   } catch (e) {
     log(`couldn't open ${url}`, e);
+  }
+}
+
+async function startThread(projectDir: string, message: string, latest?: T3Thread) {
+  const start = (model: string[]) => t3(["thread", "start", ...model, projectDir, "-"], projectDir, message);
+  let output: string;
+
+  try {
+    output = await start([]);
+  } catch (e) {
+    // A project with no default model needs one named, so reuse its latest thread's.
+    // t3 rejects the start before launching anything, so retrying can't duplicate it.
+    if (!String(e).includes("no default model") || !latest?.providerInstanceId || !latest.model) throw e;
+
+    output = await start(["--provider", latest.providerInstanceId, "--model", latest.model]);
+  }
+
+  const threadId = output.trim();
+  log(`started ${threadId} in ${projectDir}`);
+
+  // The message has already landed, so a failure here must not be reported as a failed send.
+  try {
+    if (flags["no-focus"]) return;
+    const { thread } = JSON.parse(await t3(["thread", "show", threadId, "--messages", "0", "--json"], projectDir));
+    await openInT3(thread);
+  } catch (e) {
+    log(`couldn't open new thread ${threadId}`, e);
   }
 }
 
@@ -273,7 +310,7 @@ const app = acp
   .onRequest(acp.methods.agent.initialize, () => ({
     protocolVersion: acp.PROTOCOL_VERSION,
     agentCapabilities: {
-      // Load and resume are accepted so Zed can reopen old chats after a restart.
+      // Load and resume are accepted so the ACP client can reopen old chats after a restart.
       // The relay keeps no history, so nothing is replayed and they reopen empty.
       loadSession: true,
       sessionCapabilities: { resume: {} },
@@ -299,8 +336,9 @@ const app = acp
     return {};
   })
   .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
-    // A chat Zed reopened without loading it first still works; Zed starts the
-    // relay in the project folder, so that stands in for the chat's cwd.
+    // A chat the ACP client reopened without loading it first still works; the
+    // ACP client starts the relay in the project folder, so that stands in for
+    // the chat's cwd.
     const session = sessions.get(params.sessionId) ?? { cwd: process.cwd() };
     sessions.set(params.sessionId, session);
 
@@ -322,7 +360,7 @@ const app = acp
         sessionId: params.sessionId,
         toolCall: {
           toolCallId,
-          title: "Several T3 threads are open in this checkout. Which one should get this?",
+          title: "Several T3 threads are open in this workspace. Which one should get this?",
           kind: "other",
           status: "pending",
         },
@@ -366,7 +404,14 @@ const app = acp
     });
 
     try {
-      const { matches, projectDir } = await findThreads([...quoted, session.cwd]);
+      const { matches, projectDir, latest } = await findThreads([...quoted, session.cwd]);
+
+      if (matches.length === 0) {
+        if (flags["dry-run"]) await say(`Would start a new thread in ${projectDir}`);
+        else await startThread(projectDir, message, latest);
+
+        return { stopReason: "end_turn" };
+      }
 
       // A choice made earlier in this chat holds for as long as that thread still matches.
       const match =
