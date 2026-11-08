@@ -1,5 +1,7 @@
 # T3 Code Relay
 
+![A prompt about selected code in Zed, with a hand-drawn arrow to the same message arriving in a T3 Code thread.](assets/hero.png)
+
 An ACP agent designed to hand off messages from an ACP client, like [Zed](https://zed.dev/), to an open [T3 Code](https://t3.codes/) thread.
 
 > [!NOTE]
