@@ -218,12 +218,13 @@ function scratchSuffix(dir: string) {
 }
 
 // Bring the T3 Code desktop app to the thread. Thread links look like
-// http://127.0.0.1:3773/<environmentId>/<threadId>; the app handles the same
-// path as t3code://threads/<environmentId>/<threadId>.
+// https://app.t3.codes/threads/<environmentId>/<threadId>, or without the
+// /threads prefix on a local server; the app only accepts
+// t3code://threads/<environmentId>/<threadId>.
 async function openInT3(thread: T3Thread) {
   if (flags["no-focus"] || !thread.link) return;
 
-  const url = `t3code://threads${new URL(thread.link).pathname}`;
+  const url = `t3code://threads${new URL(thread.link).pathname.replace(/^\/threads(?=\/)/, "")}`;
 
   // Opening is best effort and runs alongside the send, so it must never reject.
   try {
