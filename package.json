@@ -1,6 +1,6 @@
 {
   "name": "t3code-relay",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "An ACP agent designed to hand off messages from an ACP client to a T3 Code thread.",
   "keywords": [
     "acp",
