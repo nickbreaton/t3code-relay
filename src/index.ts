@@ -316,7 +316,7 @@ const app = acp
       sessionCapabilities: { resume: {} },
       promptCapabilities: { embeddedContext: true, image: false, audio: false },
     },
-    agentInfo: { name: "t3code-send", title: "T3 Code Send", version: packageJson.version },
+    agentInfo: { name: "t3code-send", title: "t3code-send", version: packageJson.version },
     authMethods: [],
   }))
   .onRequest(acp.methods.agent.session.new, ({ params }) => {

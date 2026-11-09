@@ -1,4 +1,4 @@
-# T3 Code Send
+# t3code-send
 
 Hand off messages from an editor with ACP support, like [Zed](https://zed.dev/), to a [T3 Code](https://t3.codes/) thread.
 
