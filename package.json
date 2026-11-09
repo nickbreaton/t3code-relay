@@ -1,6 +1,6 @@
 {
   "name": "t3code-send",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Hand off messages from an editor with ACP support, like Zed, to a T3 Code thread.",
   "keywords": [
     "acp",
