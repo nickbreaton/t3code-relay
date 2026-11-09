@@ -26,4 +26,4 @@ Run it from npm with `npx`. Here's an example setup for Zed's `settings.json`:
 | Option | Description |
 | --- | --- |
 | `--t3-bin <path>` | Use a specific `t3` CLI. |
-| `--no-focus` | Don't bring T3 Code into focus on the target thread when sending a message. |
+| `--no-focus` | Don't bring T3 Code into focus when sending a message. |
