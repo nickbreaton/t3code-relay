@@ -2,7 +2,7 @@
 
 An ACP agent designed to hand off messages from an ACP client, like [Zed](https://zed.dev/), to an open [T3 Code](https://t3.codes/) thread.
 
-![A prompt about selected code in Zed, with a hand-drawn arrow to the same message arriving in a T3 Code thread.](assets/hero.png)
+![A prompt about selected code in Zed, with a hand-drawn arrow to the same message arriving in a T3 Code thread.](https://cdn.jsdelivr.net/npm/t3code-relay/assets/hero.png)
 
 > [!NOTE]
 > This is not designed to implement the full Agent Client Protocol. T3 Code responses will not be returned to the client, as the intent is to continue the conversation within T3 Code.

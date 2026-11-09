@@ -1,6 +1,6 @@
 {
   "name": "t3code-relay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An ACP agent that hands off messages from an ACP client, like Zed, to an open T3 Code thread.",
   "keywords": [
     "acp",
@@ -23,6 +23,7 @@
     "t3code-relay": "dist/index.js"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "engines": {
