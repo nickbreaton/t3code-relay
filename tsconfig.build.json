@@ -3,8 +3,8 @@
   "compilerOptions": {
     "noEmit": false,
     "allowImportingTsExtensions": false,
-    "rootDir": ".",
+    "rootDir": "src",
     "outDir": "dist"
   },
-  "files": ["index.ts"]
+  "files": ["src/index.ts"]
 }

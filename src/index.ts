@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// A fake ACP agent: every prompt the ACP client sends is forwarded to the T3 Code thread
-// most likely working on the files involved, via the `t3` CLI.
 
 import * as acp from "@agentclientprotocol/sdk";
 import { spawn } from "node:child_process";
@@ -173,7 +171,7 @@ async function findThreads(paths: string[]): Promise<{ matches: Match[]; project
     firstProject ??= { dir, projectDir, inLinkedWorktree, latest: candidates[0] };
 
     // Scratch folders are named "<date>-<slug>-<last 8 chars of the thread id>".
-    const suffix = scratchSuffix(dir);
+    const suffix = t3ScratchSuffix(dir);
     const owner = suffix && candidates.find((t) => t.threadId.endsWith(suffix));
 
     if (owner) return { matches: [{ thread: owner, reason: `owns scratch folder …-${suffix}` }], projectDir };
@@ -210,7 +208,7 @@ async function findThreads(paths: string[]): Promise<{ matches: Match[]; project
   throw new Error(`No T3 thread is working in ${[...seen].join(" or ") || "these paths"}.`);
 }
 
-function scratchSuffix(dir: string) {
+function t3ScratchSuffix(dir: string) {
   if (!contains(SCRATCH, dir) || dir === SCRATCH) return undefined;
   const folder = dir.slice(SCRATCH.length + 1).split(sep)[0]!;
 
@@ -451,7 +449,6 @@ const stdout = new WritableStream<Uint8Array>({
   write: (chunk) => new Promise((resolve) => process.stdout.write(chunk, () => resolve())),
 });
 
-// SAFETY: process.stdin has no encoding set, so it yields Buffers, which are Uint8Arrays.
-const stdin = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+const stdin = Readable.toWeb(process.stdin)
 
 app.connect(acp.ndJsonStream(stdout, stdin));
