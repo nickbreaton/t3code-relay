@@ -11,14 +11,14 @@ An ACP agent designed to hand off messages from an ACP client, like [Zed](https:
 
 ## Setup
 
-Clone this repo, install dependencies, then run it with Node. Here's an example setup for Zed's `settings.json`:
+Run it from npm with `npx`. Here's an example setup for Zed's `settings.json`:
 
 ```json
 "agent_servers": {
   "T3 Code": {
     "type": "custom",
-    "command": "node",
-    "args": ["/path/to/t3code-relay/index.ts"]
+    "command": "npx",
+    "args": ["-y", "t3code-relay"]
   }
 }
 ```

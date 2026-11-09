@@ -1,22 +1,48 @@
 {
   "name": "t3code-relay",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "description": "An ACP agent that hands off messages from an ACP client, like Zed, to an open T3 Code thread.",
+  "keywords": [
+    "acp",
+    "agent-client-protocol",
+    "t3code",
+    "zed"
+  ],
+  "homepage": "https://github.com/nickbreaton/t3code-relay#readme",
+  "bugs": {
+    "url": "https://github.com/nickbreaton/t3code-relay/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickbreaton/t3code-relay.git"
+  },
+  "license": "MIT",
+  "author": "Nick Breaton",
   "type": "module",
-  "private": true,
+  "bin": {
+    "t3code-relay": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "lint": "oxlint",
+    "prepack": "npm run build",
     "test": "node --test --experimental-test-module-mocks index.test.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^2.4.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.91.0",
     "@types/node": "^26.6.6",
-    "oxlint": "1.91.0"
-  },
-  "peerDependencies": {
+    "oxlint": "1.91.0",
     "typescript": "^7.0.2"
-  },
-  "dependencies": {
-    "@agentclientprotocol/sdk": "^2.4.0"
   }
 }
