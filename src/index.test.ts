@@ -1,4 +1,4 @@
-// High-level happy paths for the relay, driven only through what it exposes:
+// High-level happy paths for the agent, driven only through what it exposes:
 // the ACP handlers it registers, the flags it accepts, and the commands it runs.
 //
 // The ACP SDK is mocked to capture those handlers. Everything else is real: git
@@ -31,12 +31,12 @@ type Client = {
   request: (method: string, params: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>;
 };
 
-type RelayParams = acp.InitializeRequest | acp.NewSessionRequest | acp.LoadSessionRequest | acp.ResumeSessionRequest | acp.PromptRequest;
+type AgentParams = acp.InitializeRequest | acp.NewSessionRequest | acp.LoadSessionRequest | acp.ResumeSessionRequest | acp.PromptRequest;
 
 // `never` because each handler takes its own ACP method's params and returns its own response.
 type Handler = (context: { params: never; client: Client }) => Promise<never> | never;
 
-// The relay registers its handlers when it is imported; this keeps the latest set.
+// The agent registers its handlers when it is imported; this keeps the latest set.
 let handlers = new Map<string, Handler>();
 
 function fakeAgent() {
@@ -83,7 +83,7 @@ if (program === "t3") {
 }
 `;
 
-// Each import of the relay attaches another reader to stdin.
+// Each import of the agent attaches another reader to stdin.
 process.stdin.setMaxListeners(0);
 
 // Those readers keep stdin open, which would stop the test process from exiting.
@@ -99,7 +99,7 @@ let root: string;
 let checkout: string;
 let worktree: string;
 let scratchFolder: string;
-let relayImports = 0;
+let agentImports = 0;
 
 function git(cwd: string, ...args: string[]) {
   execFileSync("git", ["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], {
@@ -116,7 +116,7 @@ function installProgram(name: string) {
 }
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), "t3code-relay-test-")));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "t3code-send-test-")));
   checkout = join(root, "project");
   worktree = join(root, "worktrees", "feature");
   scratchFolder = join(root, "t3-home", "scratch", "2026-11-08-notes-aaaa1111");
@@ -171,7 +171,7 @@ function recordedCalls() {
     .map((line): Recorded => JSON.parse(line));
 }
 
-// Calls that change something in T3, leaving out the relay's list and show lookups.
+// Calls that change something in T3, leaving out the agent's list and show lookups.
 function t3Writes() {
   return recordedCalls()
     .filter((call) => call.program === "t3" && (call.args[1] === "send" || call.args[1] === "start"))
@@ -188,14 +188,14 @@ function fileUri(...segments: string[]) {
   return pathToFileURL(join(...segments)).href;
 }
 
-async function startRelay(...flags: string[]) {
+async function startAgent(...flags: string[]) {
   process.argv = ["node", "index.ts", "--t3-bin", join(root, "bin", "t3"), ...flags];
-  relayImports += 1;
+  agentImports += 1;
 
-  // The relay reads its flags on import, so every test needs a fresh copy of the module.
-  await import(`./index.ts?relay=${relayImports}`);
+  // The agent reads its flags on import, so every test needs a fresh copy of the module.
+  await import(`./index.ts?agent=${agentImports}`);
 
-  const relayHandlers = handlers;
+  const agentHandlers = handlers;
   const chatMessages: string[] = [];
   const permissionRequests: acp.RequestPermissionRequest[] = [];
   let answer = "";
@@ -213,10 +213,10 @@ async function startRelay(...flags: string[]) {
     },
   };
 
-  function call<Response>(method: string, params: RelayParams): Promise<Response> {
-    const handler = relayHandlers.get(method);
+  function call<Response>(method: string, params: AgentParams): Promise<Response> {
+    const handler = agentHandlers.get(method);
 
-    assert.ok(handler, `the relay should handle ${method}`);
+    assert.ok(handler, `the agent should handle ${method}`);
 
     // SAFETY: the parameter is `never` only so each call can name its own method's params.
     return Promise.resolve(handler({ params: params as never, client }));
@@ -241,12 +241,12 @@ const fileLink = (uri: string): acp.ContentBlock => ({ type: "resource_link", ur
 
 describe("ACP sessions", () => {
   test("introduces itself as an ACP agent that accepts files and can reopen chats", async () => {
-    const relay = await startRelay();
+    const agent = await startAgent();
 
-    const response = await relay.initialize();
+    const response = await agent.initialize();
 
     assert.equal(response.protocolVersion, acp.PROTOCOL_VERSION);
-    assert.equal(response.agentInfo?.name, "t3code-relay");
+    assert.equal(response.agentInfo?.name, "t3code-send");
     assert.equal(response.agentCapabilities?.loadSession, true);
     assert.deepEqual(response.agentCapabilities?.sessionCapabilities?.resume, {});
     assert.equal(response.agentCapabilities?.promptCapabilities?.embeddedContext, true);
@@ -255,10 +255,10 @@ describe("ACP sessions", () => {
   for (const method of [acp.methods.agent.session.load, acp.methods.agent.session.resume]) {
     test(`a chat reopened with ${method} keeps forwarding prompts`, async () => {
       t3Knows([fakeThread("thread-a")]);
-      const relay = await startRelay();
+      const agent = await startAgent();
 
-      await relay.reopenSession(method, "chat-from-before-restart", checkout);
-      await relay.prompt("chat-from-before-restart", [text("Back again")]);
+      await agent.reopenSession(method, "chat-from-before-restart", checkout);
+      await agent.prompt("chat-from-before-restart", [text("Back again")]);
 
       assert.deepEqual(t3Writes(), [{ args: ["thread", "send", "thread-a", "-"], message: "Back again" }]);
     });
@@ -268,23 +268,23 @@ describe("ACP sessions", () => {
 describe("forwarding a prompt", () => {
   test("forwards a prompt to the open thread in the checkout and brings T3 Code to that thread", async () => {
     t3Knows([fakeThread("thread-a")]);
-    const relay = await startRelay();
-    const { sessionId } = await relay.newSession(checkout);
+    const agent = await startAgent();
+    const { sessionId } = await agent.newSession(checkout);
 
-    const response = await relay.prompt(sessionId, [text("Fix the login bug")]);
+    const response = await agent.prompt(sessionId, [text("Fix the login bug")]);
 
     assert.deepEqual(t3Writes(), [{ args: ["thread", "send", "thread-a", "-"], message: "Fix the login bug" }]);
     assert.deepEqual(openedUrls(), ["t3code://threads/env-1/thread-a"]);
     assert.equal(response.stopReason, "end_turn");
-    assert.deepEqual(relay.chatMessages, [], "a successful send adds nothing to the ACP client's chat");
+    assert.deepEqual(agent.chatMessages, [], "a successful send adds nothing to the ACP client's chat");
   });
 
   test("flattens text, quoted file contents, and file links into one markdown message", async () => {
     t3Knows([fakeThread("thread-a")]);
-    const relay = await startRelay();
-    const { sessionId } = await relay.newSession(checkout);
+    const agent = await startAgent();
+    const { sessionId } = await agent.newSession(checkout);
 
-    await relay.prompt(sessionId, [
+    await agent.prompt(sessionId, [
       text("Compare these"),
       { type: "resource", resource: { uri: fileUri(checkout, "src", "a.ts"), text: "const a = 1;" } },
       fileLink(fileUri(checkout, "src", "b.ts")),
@@ -302,10 +302,10 @@ describe("forwarding a prompt", () => {
 describe("choosing a thread", () => {
   test("routes a prompt quoting a worktree file to the thread in that worktree, ahead of the chat's folder", async () => {
     t3Knows([fakeThread("main-thread"), { ...fakeThread("worktree-thread"), worktreePath: worktree }]);
-    const relay = await startRelay();
-    const { sessionId } = await relay.newSession(checkout);
+    const agent = await startAgent();
+    const { sessionId } = await agent.newSession(checkout);
 
-    await relay.prompt(sessionId, [text("Look at this"), fileLink(fileUri(worktree, "file.ts"))]);
+    await agent.prompt(sessionId, [text("Look at this"), fileLink(fileUri(worktree, "file.ts"))]);
 
     assert.deepEqual(
       t3Writes().map((write) => write.args),
@@ -315,10 +315,10 @@ describe("choosing a thread", () => {
 
   test("routes a prompt quoting a scratch file to the thread that owns the scratch folder", async () => {
     t3Knows([fakeThread("other-thread"), fakeThread("thread-aaaa1111")]);
-    const relay = await startRelay();
-    const { sessionId } = await relay.newSession(checkout);
+    const agent = await startAgent();
+    const { sessionId } = await agent.newSession(checkout);
 
-    await relay.prompt(sessionId, [text("See my notes"), fileLink(fileUri(scratchFolder, "notes.md"))]);
+    await agent.prompt(sessionId, [text("See my notes"), fileLink(fileUri(scratchFolder, "notes.md"))]);
 
     assert.deepEqual(
       t3Writes().map((write) => write.args),
@@ -328,16 +328,16 @@ describe("choosing a thread", () => {
 
   test("asks which thread to use when several match, then remembers the choice for that chat", async () => {
     t3Knows([fakeThread("older-thread", "2026-11-08T09:00:00.000Z"), fakeThread("newer-thread", "2026-11-08T10:00:00.000Z")]);
-    const relay = await startRelay();
-    const { sessionId } = await relay.newSession(checkout);
-    relay.willAnswerWith("older-thread");
+    const agent = await startAgent();
+    const { sessionId } = await agent.newSession(checkout);
+    agent.willAnswerWith("older-thread");
 
-    await relay.prompt(sessionId, [text("First message")]);
-    await relay.prompt(sessionId, [text("Second message")]);
+    await agent.prompt(sessionId, [text("First message")]);
+    await agent.prompt(sessionId, [text("Second message")]);
 
-    assert.equal(relay.permissionRequests.length, 1, "the ACP client is only asked once");
+    assert.equal(agent.permissionRequests.length, 1, "the ACP client is only asked once");
     assert.deepEqual(
-      relay.permissionRequests[0]?.options.map((option) => [option.optionId, option.name]),
+      agent.permissionRequests[0]?.options.map((option) => [option.optionId, option.name]),
       [
         ["newer-thread", "Title of newer-thread"],
         ["older-thread", "Title of older-thread"],
@@ -355,10 +355,10 @@ describe("choosing a thread", () => {
       ...fakeThread("started-thread"),
       link: "http://localhost:3773/env-1/started-thread",
     });
-    const relay = await startRelay();
-    const { sessionId } = await relay.newSession(checkout);
+    const agent = await startAgent();
+    const { sessionId } = await agent.newSession(checkout);
 
-    await relay.prompt(sessionId, [text("Begin something new")]);
+    await agent.prompt(sessionId, [text("Begin something new")]);
 
     assert.deepEqual(t3Writes(), [{ args: ["thread", "start", checkout, "-"], message: "Begin something new" }]);
     assert.deepEqual(openedUrls(), ["t3code://threads/env-1/started-thread"]);
@@ -368,10 +368,10 @@ describe("choosing a thread", () => {
 describe("command line flags", () => {
   test("--no-focus sends the message without bringing T3 Code to the thread", async () => {
     t3Knows([fakeThread("thread-a")]);
-    const relay = await startRelay("--no-focus");
-    const { sessionId } = await relay.newSession(checkout);
+    const agent = await startAgent("--no-focus");
+    const { sessionId } = await agent.newSession(checkout);
 
-    await relay.prompt(sessionId, [text("Quietly")]);
+    await agent.prompt(sessionId, [text("Quietly")]);
 
     assert.deepEqual(t3Writes(), [{ args: ["thread", "send", "thread-a", "-"], message: "Quietly" }]);
     assert.deepEqual(openedUrls(), []);

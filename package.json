@@ -1,5 +1,5 @@
 {
-  "name": "t3code-relay",
+  "name": "t3code-send",
   "version": "0.1.3",
   "description": "Hand off messages from an editor with ACP support, like Zed, to a T3 Code thread.",
   "keywords": [
@@ -8,19 +8,19 @@
     "t3code",
     "zed"
   ],
-  "homepage": "https://github.com/nickbreaton/t3code-relay#readme",
+  "homepage": "https://github.com/nickbreaton/t3code-send#readme",
   "bugs": {
-    "url": "https://github.com/nickbreaton/t3code-relay/issues"
+    "url": "https://github.com/nickbreaton/t3code-send/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nickbreaton/t3code-relay.git"
+    "url": "git+https://github.com/nickbreaton/t3code-send.git"
   },
   "license": "MIT",
   "author": "Nick Breaton",
   "type": "module",
   "bin": {
-    "t3code-relay": "dist/index.js"
+    "t3code-send": "dist/index.js"
   },
   "files": [
     "assets",

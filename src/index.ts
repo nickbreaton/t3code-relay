@@ -34,7 +34,7 @@ const MAX_CHOICES = 4;
 const DONT_SEND = "dont-send";
 
 // Logs go to stderr; stdout carries the ACP protocol.
-const log = (...args: unknown[]) => console.error("[t3code-relay]", ...args);
+const log = (...args: unknown[]) => console.error("[t3code-send]", ...args);
 
 // threadId is the thread the user chose for this chat, when they had to choose.
 const sessions = new Map<string, { cwd: string; threadId?: string }>();
@@ -64,7 +64,7 @@ function run(command: string, args: string[], options: { cwd?: string; stdin?: s
     child.on("close", (code) => resolve({ code, out, err }));
 
     // A child that exits without reading stdin surfaces through its exit code,
-    // so the resulting EPIPE must not take the relay down.
+    // so the resulting EPIPE must not take the agent down.
     child.stdin.on("error", (e) => log("stdin write failed:", e));
     child.stdin.end(options.stdin);
   });
@@ -306,17 +306,17 @@ function toMarkdown(blocks: acp.ContentBlock[], cwd: string) {
 }
 
 const app = acp
-  .agent({ name: "t3code-relay" })
+  .agent({ name: "t3code-send" })
   .onRequest(acp.methods.agent.initialize, () => ({
     protocolVersion: acp.PROTOCOL_VERSION,
     agentCapabilities: {
       // Load and resume are accepted so the ACP client can reopen old chats after a restart.
-      // The relay keeps no history, so nothing is replayed and they reopen empty.
+      // The agent keeps no history, so nothing is replayed and they reopen empty.
       loadSession: true,
       sessionCapabilities: { resume: {} },
       promptCapabilities: { embeddedContext: true, image: false, audio: false },
     },
-    agentInfo: { name: "t3code-relay", title: "T3 Code Relay", version: packageJson.version },
+    agentInfo: { name: "t3code-send", title: "T3 Code Send", version: packageJson.version },
     authMethods: [],
   }))
   .onRequest(acp.methods.agent.session.new, ({ params }) => {
@@ -337,7 +337,7 @@ const app = acp
   })
   .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
     // A chat the ACP client reopened without loading it first still works; the
-    // ACP client starts the relay in the project folder, so that stands in for
+    // ACP client starts the agent in the project folder, so that stands in for
     // the chat's cwd.
     const session = sessions.get(params.sessionId) ?? { cwd: process.cwd() };
     sessions.set(params.sessionId, session);

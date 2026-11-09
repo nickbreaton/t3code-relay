@@ -1,4 +1,4 @@
-# T3 Code Relay
+# T3 Code Send
 
 Hand off messages from an editor with ACP support, like [Zed](https://zed.dev/), to a [T3 Code](https://t3.codes/) thread.
 
@@ -16,7 +16,7 @@ Run it from npm with `npx`. Here's an example setup for Zed's `settings.json`:
   "T3 Code": {
     "type": "custom",
     "command": "npx",
-    "args": ["-y", "t3code-relay"]
+    "args": ["-y", "t3code-send"]
   }
 }
 ```

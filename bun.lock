@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "t3code-relay",
+      "name": "t3code-send",
       "dependencies": {
         "@agentclientprotocol/sdk": "^2.4.0",
         "zod": "^4.6.7",
