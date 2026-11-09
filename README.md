@@ -1,6 +1,6 @@
 # t3code-send
 
-Hand off messages from an editor with ACP support, like [Zed](https://zed.dev/), to a [T3 Code](https://t3.codes/) thread.
+Hand off messages from an editor with ACP support, like [Zed](https://zed.dev/), to the relevant [T3 Code](https://t3.codes/) thread.
 
 ![A prompt about selected code in Zed, with a hand-drawn arrow to the same message arriving in a T3 Code thread.](/assets/hero.png)
 
