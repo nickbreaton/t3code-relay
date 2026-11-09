@@ -8,6 +8,7 @@ import { delimiter, dirname, join, sep } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import packageJson from "../package.json" with { type: "json" };
 
 const { values: flags } = parseArgs({
   args: process.argv.slice(2),
@@ -315,7 +316,7 @@ const app = acp
       sessionCapabilities: { resume: {} },
       promptCapabilities: { embeddedContext: true, image: false, audio: false },
     },
-    agentInfo: { name: "t3code-relay", title: "T3 Code Relay", version: "0.1.0" },
+    agentInfo: { name: "t3code-relay", title: "T3 Code Relay", version: packageJson.version },
     authMethods: [],
   }))
   .onRequest(acp.methods.agent.session.new, ({ params }) => {
